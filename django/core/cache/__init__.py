@@ -19,6 +19,7 @@ from django.core import signals
 from django.core.cache.backends.base import (
     InvalidCacheBackendError, CacheKeyWarning, BaseCache)
 from django.core.exceptions import ImproperlyConfigured
+from django.utils import six
 from django.utils.module_loading import import_string
 
 
@@ -70,9 +71,10 @@ class CacheHandler(object):
 
     def __getitem__(self, alias):
         try:
-            return self._caches.caches[alias]
+            return self._caches.aliases[alias]
         except AttributeError:
-            self._caches.caches = {}
+            self._caches.caches = []
+            self._caches.aliases = {}
         except KeyError:
             pass
 
@@ -82,11 +84,18 @@ class CacheHandler(object):
             )
 
         cache = _create_cache(alias)
-        self._caches.caches[alias] = cache
+        self._caches.caches.append(cache)
+        self._caches.aliases[alias] = cache
+
+        # Find other aliases that may have been set like CACHES['a'] = CACHES['b']
+        for other_alias, definition in six.iteritems(settings.CACHES):
+            if settings.CACHES[alias] == definition:
+                self._caches.aliases[other_alias] = cache
+
         return cache
 
     def all(self):
-        return getattr(self._caches, 'caches', {}).values()
+        return getattr(self._caches, 'caches', [])
 
 caches = CacheHandler()
 
