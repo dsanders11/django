@@ -2119,6 +2119,24 @@ class TestMakeTemplateFragmentKey(SimpleTestCase):
             'template.cache.spam.f27688177baec990cdf3fbd9d9c3f469')
 
 
+def multiple_cache_aliases_for_test():
+    setting = {
+        'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'},
+        'bar': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+            'OPTIONS': {'MAX_ENTRIES': 20}
+        },
+        'baz': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+            'OPTIONS': {'MAX_ENTRIES': 30}
+        }
+    }
+
+    setting['foo'] = setting['bar']
+
+    return setting
+
+
 class CacheHandlerTest(SimpleTestCase):
     def test_same_instance(self):
         """
@@ -2145,3 +2163,17 @@ class CacheHandlerTest(SimpleTestCase):
             t.join()
 
         self.assertIsNot(c[0], c[1])
+
+    @override_settings(CACHES=multiple_cache_aliases_for_test())
+    def test_multiple_aliases_same_cache(self):
+        """
+        Multiple aliases for the same cache should yield the same instance.
+        Caches should only appear once in list of all caches.
+        """
+        cache1 = caches['default']
+        cache2 = caches['foo']
+        cache3 = caches['bar']
+        cache4 = caches['baz']
+
+        self.assertIs(cache2, cache3)
+        self.assertItemsEqual(caches.all(), [cache1, cache2, cache4])
