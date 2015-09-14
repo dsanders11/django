@@ -64,7 +64,6 @@ class FileUploadHandler(object):
         self.content_type = None
         self.content_length = None
         self.charset = None
-        self.request = request
 
     def handle_raw_input(self, input_data, META, content_length, boundary, encoding=None):
         """

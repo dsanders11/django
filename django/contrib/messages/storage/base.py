@@ -1,5 +1,7 @@
 from __future__ import unicode_literals
 
+import weakref
+
 from django.conf import settings
 from django.utils.encoding import force_text, python_2_unicode_compatible
 from django.contrib.messages import constants, utils
@@ -62,7 +64,7 @@ class BaseStorage(object):
     """
 
     def __init__(self, request, *args, **kwargs):
-        self.request = request
+        self.request = weakref.proxy(request)
         self._queued_messages = []
         self.used = False
         self.added_new = False
