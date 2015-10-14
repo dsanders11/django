@@ -1,5 +1,6 @@
 from django.apps import apps
 from django.template import Library
+from django.utils.functional import lazy
 
 register = Library()
 
@@ -15,3 +16,6 @@ def static(path):
         else:
             from django.templatetags.static import static as _static
     return _static(path)
+
+
+static_lazy = lazy(static, str)
