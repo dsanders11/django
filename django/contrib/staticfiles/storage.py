@@ -59,6 +59,7 @@ class HashedFilesMixin(object):
             (r"""(@import\s*["']\s*(.*?)["'])""", """@import url("%s")"""),
         )),
     )
+    max_post_process_passes = 5
 
     def __init__(self, *args, **kwargs):
         super(HashedFilesMixin, self).__init__(*args, **kwargs)
@@ -84,16 +85,23 @@ class HashedFilesMixin(object):
             md5.update(chunk)
         return md5.hexdigest()[:12]
 
-    def hashed_name(self, name, content=None):
+    def hashed_name(self, name, content=None, filename=None):
+        # filename = name of file to hash if no content
+        # name = base name to construct new hashed filename from        
+
         parsed_name = urlsplit(unquote(name))
         clean_name = parsed_name.path.strip()
+        if filename:
+            filename = urlsplit(unquote(filename)).path.strip()
+
+        filename = filename or clean_name
         opened = False
         if content is None:
-            if not self.exists(clean_name):
+            if not self.exists(filename):
                 raise ValueError("The file '%s' could not be found with %r." %
-                                 (clean_name, self))
+                                 (filename, self))
             try:
-                content = self.open(clean_name)
+                content = self.open(filename)
             except IOError:
                 # Handle directory paths and fragments
                 return name
@@ -117,7 +125,7 @@ class HashedFilesMixin(object):
             unparsed_name[2] += '?'
         return urlunsplit(unparsed_name)
 
-    def url(self, name, force=False):
+    def _url(self, hashed_name_func, name, force=False, hashed_files=None):
         """
         Returns the real URL in DEBUG mode.
         """
@@ -128,7 +136,10 @@ class HashedFilesMixin(object):
             if urlsplit(clean_name).path.endswith('/'):  # don't hash paths
                 hashed_name = name
             else:
-                hashed_name = self.stored_name(clean_name)
+                if hashed_files is not None:
+                    hashed_name = hashed_name_func(clean_name, hashed_files)
+                else:
+                    hashed_name = hashed_name_func(clean_name)
 
         final_url = super(HashedFilesMixin, self).url(hashed_name)
 
@@ -145,7 +156,14 @@ class HashedFilesMixin(object):
 
         return unquote(final_url)
 
-    def url_converter(self, name, template=None):
+    def url(self, name, force=False):
+        """
+        Returns the real URL in DEBUG mode.
+        """
+
+        return self._url(self.stored_name, name, force)
+
+    def url_converter(self, name, hashed_files, template=None):
         """
         Returns the custom URL converter for the given file name.
         """
@@ -181,7 +199,7 @@ class HashedFilesMixin(object):
                 else:
                     start, end = 1, sub_level - 1
             joined_result = '/'.join(name_parts[:-start] + url_parts[end:])
-            hashed_url = self.url(unquote(joined_result), force=True)
+            hashed_url = self._url(self._stored_name, unquote(joined_result), force=True, hashed_files=hashed_files)
             file_name = hashed_url.split('/')[-1:]
             relative_url = '/'.join(url.split('/')[:-1] + file_name)
 
@@ -189,6 +207,73 @@ class HashedFilesMixin(object):
             return template % unquote(relative_url)
 
         return converter
+
+    def _post_process(self, paths, adjustable_paths, hashed_files):
+        # then sort the files by the directory level
+        path_level = lambda name: len(name.split(os.sep))
+        for name in sorted(paths.keys(), key=path_level, reverse=True):
+            substitutions = True
+
+            # use the original, local file, not the copied-but-unprocessed
+            # file, which might be somewhere far away, like S3
+            storage, path = paths[name]
+            with storage.open(path) as original_file:
+
+                # generate the hash with the original content, even for
+                # adjustable files.
+                if not hashed_files.get(self.hash_key(name), None):
+                    hashed_name = self.hashed_name(name, original_file)
+                else:
+                    hashed_name = hashed_files[self.hash_key(name)]
+
+                # then get the original's file content..
+                if hasattr(original_file, 'seek'):
+                    original_file.seek(0)
+
+                hashed_file_exists = self.exists(hashed_name)
+                processed = False
+
+                # ..to apply each replacement pattern to the content
+                if name in adjustable_paths:
+                    content = original_file.read().decode(settings.FILE_CHARSET)
+                    for patterns in self._patterns.values():
+                        for pattern, template in patterns:
+                            converter = self.url_converter(name, hashed_files, template)
+                            try:
+                                content = pattern.sub(converter, content)
+                            except ValueError as exc:
+                                yield name, None, exc, False
+                    if hashed_file_exists:
+                        self.delete(hashed_name)
+                    # then save the processed result
+                    content_file = ContentFile(force_bytes(content))
+                    saved_name = self._save(hashed_name, content_file)  # Save intermediate file for reference
+                    new_hashed_name = self.hashed_name(name, content_file)
+
+                    if new_hashed_name == hashed_name:
+                        substitutions = False
+
+                    if self.exists(new_hashed_name):
+                        self.delete(new_hashed_name)
+
+                    saved_name = self._save(new_hashed_name, content_file)
+                    hashed_files[self.hash_key(hashed_name)] = force_text(self.clean_name(saved_name))
+                    hashed_name = force_text(self.clean_name(saved_name))
+                    hashed_files[self.hash_key(hashed_name)] = hashed_name
+                    processed = True
+
+                if not processed:
+                    # or handle the case in which neither processing nor
+                    # a change to the original file happened
+                    if not hashed_file_exists:
+                        processed = True
+                        saved_name = self._save(hashed_name, original_file)
+                        hashed_name = force_text(self.clean_name(saved_name))
+
+                # and then set the cache accordingly
+                hashed_files[self.hash_key(name)] = hashed_name                    
+
+                yield name, hashed_name, processed, substitutions
 
     def post_process(self, paths, dry_run=False, **options):
         """
@@ -208,61 +293,28 @@ class HashedFilesMixin(object):
         if dry_run:
             return
 
-        # where to store the new paths
         hashed_files = OrderedDict()
 
         # build a list of adjustable files
         matches = lambda path: matches_patterns(path, self._patterns.keys())
-        adjustable_paths = [path for path in paths if matches(path)]
+        adjustable_paths = {path: paths[path] for path in paths if matches(path)}
 
-        # then sort the files by the directory level
-        path_level = lambda name: len(name.split(os.sep))
-        for name in sorted(paths.keys(), key=path_level, reverse=True):
+        # Do a single pass first, this will post-process all files once, then we can repeat for adjustable files
+        for name, hashed_name, processed, substitutions in self._post_process(paths, adjustable_paths.keys(), hashed_files):
+            yield name, hashed_name, processed
 
-            # use the original, local file, not the copied-but-unprocessed
-            # file, which might be somewhere far away, like S3
-            storage, path = paths[name]
-            with storage.open(path) as original_file:
+        for i in xrange(0, self.max_post_process_passes):
+            any_substitutions = False
 
-                # generate the hash with the original content, even for
-                # adjustable files.
-                hashed_name = self.hashed_name(name, original_file)
-
-                # then get the original's file content..
-                if hasattr(original_file, 'seek'):
-                    original_file.seek(0)
-
-                hashed_file_exists = self.exists(hashed_name)
-                processed = False
-
-                # ..to apply each replacement pattern to the content
-                if name in adjustable_paths:
-                    content = original_file.read().decode(settings.FILE_CHARSET)
-                    for patterns in self._patterns.values():
-                        for pattern, template in patterns:
-                            converter = self.url_converter(name, template)
-                            try:
-                                content = pattern.sub(converter, content)
-                            except ValueError as exc:
-                                yield name, None, exc
-                    if hashed_file_exists:
-                        self.delete(hashed_name)
-                    # then save the processed result
-                    content_file = ContentFile(force_bytes(content))
-                    saved_name = self._save(hashed_name, content_file)
-                    hashed_name = force_text(self.clean_name(saved_name))
-                    processed = True
-                else:
-                    # or handle the case in which neither processing nor
-                    # a change to the original file happened
-                    if not hashed_file_exists:
-                        processed = True
-                        saved_name = self._save(hashed_name, original_file)
-                        hashed_name = force_text(self.clean_name(saved_name))
-
-                # and then set the cache accordingly
-                hashed_files[self.hash_key(name)] = hashed_name
+            for name, hashed_name, processed, substitutions in self._post_process(adjustable_paths, adjustable_paths.keys(), hashed_files):
                 yield name, hashed_name, processed
+                any_substitutions = any_substitutions or substitutions
+
+            if not any_substitutions:
+                break
+
+        if any_substitutions:
+            raise RuntimeError("Max post-process passes exceeded")
 
         # Finally store the processed paths
         self.hashed_files.update(hashed_files)
@@ -273,15 +325,31 @@ class HashedFilesMixin(object):
     def hash_key(self, name):
         return name
 
-    def stored_name(self, name):
+    def _stored_name(self, name, hashed_files):
         hash_key = self.hash_key(name)
-        cache_name = self.hashed_files.get(hash_key)
+        cache_name = hashed_files.get(hash_key)
         if cache_name is None:
             cache_name = self.clean_name(self.hashed_name(name))
-            # store the hashed name if there was a miss, e.g.
-            # when the files are still processed
-            self.hashed_files[hash_key] = cache_name
         return cache_name
+
+    def stored_name(self, name):
+        cache_name = name
+
+        while True:
+            hash_key = self.hash_key(cache_name)
+            cache_value = self.hashed_files.get(hash_key)
+            if cache_value is None:
+                cache_value = self.clean_name(self.hashed_name(name, content=None, filename=cache_name))
+                # store the hashed name if there was a miss, e.g.
+                # when the files are still processed
+                self.hashed_files[hash_key] = cache_value
+
+            if cache_value == cache_name:
+                break
+            else:
+                cache_name = cache_value
+
+        return cache_value
 
 
 class ManifestFilesMixin(HashedFilesMixin):
@@ -328,6 +396,23 @@ class ManifestFilesMixin(HashedFilesMixin):
             self.delete(self.manifest_name)
         contents = json.dumps(payload).encode('utf-8')
         self._save(self.manifest_name, ContentFile(contents))
+
+    def stored_name(self, name):
+        parsed_name = urlsplit(unquote(name))
+        clean_name = parsed_name.path.strip()
+
+        hash_key = self.hash_key(clean_name)
+        cache_name = self.hashed_files.get(hash_key)
+        if cache_name is None:
+            raise ValueError("Missing staticfiles manifest entry for '%s'" % clean_name)
+
+        unparsed_name = list(parsed_name)
+        unparsed_name[2] = cache_name
+        # Special casing for a @font-face hack, like url(myfont.eot?#iefix")
+        # http://www.fontspring.com/blog/the-new-bulletproof-font-face-syntax
+        if '?#' in name and not unparsed_name[3]:
+            unparsed_name[2] += '?'
+        return urlunsplit(unparsed_name)
 
 
 class _MappingCache(object):
