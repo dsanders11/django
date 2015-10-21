@@ -250,6 +250,7 @@ class HashedFilesMixin(object):
                     saved_name = self._save(hashed_name, content_file)  # Save intermediate file for reference
                     new_hashed_name = self.hashed_name(name, content_file)
 
+                    # If the file hash stayed the same, this file didn't change
                     if new_hashed_name == hashed_name:
                         substitutions = False
 
@@ -257,9 +258,7 @@ class HashedFilesMixin(object):
                         self.delete(new_hashed_name)
 
                     saved_name = self._save(new_hashed_name, content_file)
-                    hashed_files[self.hash_key(hashed_name)] = force_text(self.clean_name(saved_name))
                     hashed_name = force_text(self.clean_name(saved_name))
-                    hashed_files[self.hash_key(hashed_name)] = hashed_name
                     processed = True
 
                 if not processed:
@@ -333,23 +332,33 @@ class HashedFilesMixin(object):
         return cache_name
 
     def stored_name(self, name):
-        cache_name = name
+        hash_key = self.hash_key(name)
+        cache_name = self.hashed_files.get(hash_key)
+
+        if cache_name:
+            return cache_name
+
+        # No cached name found, re-calculate it from the files
+        intermediate_name = name
 
         while True:
-            hash_key = self.hash_key(cache_name)
-            cache_value = self.hashed_files.get(hash_key)
-            if cache_value is None:
-                cache_value = self.clean_name(self.hashed_name(name, content=None, filename=cache_name))
-                # store the hashed name if there was a miss, e.g.
-                # when the files are still processed
-                self.hashed_files[hash_key] = cache_value
+            cache_name = self.clean_name(
+                self.hashed_name(name, content=None, filename=intermediate_name))
 
-            if cache_value == cache_name:
-                break
+            if intermediate_name == cache_name:
+                # store the hashed name if there was a miss
+                self.hashed_files[hash_key] = cache_name
+
+                return cache_name
             else:
-                cache_name = cache_value
+                # Move on to the next intermediate file
+                intermediate_name = cache_name
 
-        return cache_value
+                # TBD - We could store the intermediate hash in cache here,
+                #       but is there any real benefit? What are the odds that
+                #       only the final key was evicted from cache and not the
+                #       intermediate keys? They also would increase the odds
+                #       of keys being evicted from cache by taking up space
 
 
 class ManifestFilesMixin(HashedFilesMixin):
