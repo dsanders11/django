@@ -2027,9 +2027,10 @@ class OneToOneField(ForeignKey):
     related_accessor_class = SingleRelatedObjectDescriptor
     description = _("One-to-one relationship")
 
-    def __init__(self, to, to_field=None, **kwargs):
+    def __init__(self, to, to_field=None, delete_parent=True, **kwargs):
         kwargs['unique'] = True
         super(OneToOneField, self).__init__(to, to_field, OneToOneRel, **kwargs)
+        self.delete_parent = delete_parent
 
     def deconstruct(self):
         name, path, args, kwargs = super(OneToOneField, self).deconstruct()

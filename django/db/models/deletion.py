@@ -204,7 +204,7 @@ class Collector(object):
         # related objects. These will be found by meta.get_fields()
         concrete_model = model._meta.concrete_model
         for ptr in six.itervalues(concrete_model._meta.parents):
-            if ptr:
+            if ptr and ptr.delete_parent:
                 # FIXME: This seems to be buggy and execute a query for each
                 # parent object fetch. We have the parent data in the obj,
                 # but we don't have a nice way to turn that data into parent
