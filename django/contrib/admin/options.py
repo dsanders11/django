@@ -1091,6 +1091,44 @@ class ModelAdmin(BaseModelAdmin):
         """
         formset.save()
 
+    def save_reverse_formset(self, request, form, formset, change):
+        """
+        Given a reverse inline formset save it to the database.
+        """
+        formset.save()
+
+    def save_reverse_related(self, request, obj, form, formsets, inlines, change):
+        """
+        Given the ``HttpRequest``, the model instance, the parent ``ModelForm``
+        instance, the list of reverse inline formsets, the list of reverse inline
+        instances and a boolean value based on  whether the parent is being added
+        or changed, save the reverse related objects to the  database. Note that at
+        this point save_form() has been called but save_model() has NOT been called.
+        """
+        for formset, inline in zip(formsets, inlines):
+            fk_name = inline.model._meta.get_field(formset.fk.name).field.name
+            self.save_reverse_formset(request, form, formset, change=change)
+
+            # assert not instances or len(instances) == 1
+
+            if formset.deleted_objects:
+                assert len(formset.deleted_objects) == 1
+
+                instance = None
+            elif formset.changed_objects:
+                assert len(formset.changed_objects) == 1
+
+                instance = formset.changed_objects[0][0]
+            elif formset.new_objects:
+                assert len(formset.new_objects) == 1
+
+                instance = formset.new_objects[0]
+            else:
+                # Formset either had no objects to begin with, or none changed
+                continue
+
+            setattr(obj, fk_name, instance)
+
     def save_related(self, request, form, formsets, change):
         """
         Given the ``HttpRequest``, the parent ``ModelForm`` instance, the
@@ -1466,8 +1504,20 @@ class ModelAdmin(BaseModelAdmin):
                 new_object = form.instance
             formsets, inline_instances = self._create_formsets(request, new_object, change=not add)
             if all_valid(formsets) and form_validated:
+                reverse_inlines = []
+                reverse_formsets = []  # formset for formset in formsets if getattr(formset, 'reverse', False)]
+                related_formsets = []  # formset for formset in formsets if not getattr(formset, 'reverse', False)]
+
+                for formset, inline in zip(formsets, inline_instances):
+                    if getattr(inline, 'reverse', False):
+                        reverse_formsets.append(formset)
+                        reverse_inlines.append(inline)
+                    else:
+                        related_formsets.append(formset)
+
+                self.save_reverse_related(request, new_object, form, reverse_formsets, reverse_inlines, not add)
                 self.save_model(request, new_object, form, not add)
-                self.save_related(request, form, formsets, not add)
+                self.save_related(request, form, related_formsets, not add)
                 if add:
                     self.log_addition(request, new_object)
                     return self.response_add(request, new_object)
