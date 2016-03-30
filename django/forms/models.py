@@ -932,7 +932,7 @@ class BaseInlineFormSet(BaseModelFormSet):
 
         # Add the generated field to form._meta.fields if it's defined to make
         # sure validation isn't skipped on that field.
-        if form._meta.fields:
+        if form._meta.fields and self.fk.name not in form._meta.fields:
             if isinstance(form._meta.fields, tuple):
                 form._meta.fields = list(form._meta.fields)
             form._meta.fields.append(self.fk.name)
