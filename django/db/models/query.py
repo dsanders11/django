@@ -558,9 +558,10 @@ class QuerySet(object):
             "Cannot update a query once a slice has been taken."
         self._for_write = True
         query = self.query.clone(sql.UpdateQuery)
+        query.add_update_values(kwargs)
+        # Clear any annotations so that they won't be present in subqueries
         query.set_annotation_mask(None)
         query._annotations = None
-        query.add_update_values(kwargs)
         with transaction.atomic(using=self.db, savepoint=False):
             rows = query.get_compiler(self.db).execute_sql(CURSOR)
         self._result_cache = None
@@ -577,9 +578,10 @@ class QuerySet(object):
         assert self.query.can_filter(), \
             "Cannot update a query once a slice has been taken."
         query = self.query.clone(sql.UpdateQuery)
+        query.add_update_fields(values)
+        # Clear any annotations so that they won't be present in subqueries
         query.set_annotation_mask(None)
         query._annotations = None
-        query.add_update_fields(values)
         self._result_cache = None
         return query.get_compiler(self.db).execute_sql(CURSOR)
     _update.alters_data = True

@@ -139,7 +139,13 @@ class UpdateQuery(Query):
         Used by add_update_values() as well as the "fast" update path when
         saving models.
         """
-        self.values.extend(values_seq)
+       for field, model, val in values_seq:
+            if hasattr(val, 'resolve_expression'):
+                # Resolve expressions here so that annotations are no longer needed
+                val = val.resolve_expression(self, allow_joins=False, for_save=True)
+                if val.contains_aggregate:
+                    raise FieldError("Aggregate functions are not allowed in this query")
+            self.values.append((field, model, val))
 
     def add_related_update(self, model, field, value):
         """
