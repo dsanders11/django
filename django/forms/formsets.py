@@ -139,8 +139,8 @@ class BaseFormSet(object):
         Instantiate forms at first property access.
         """
         # DoS protection is included in total_form_count()
-        forms = [self._construct_form(i) for i in range(self.total_form_count())]
-        return forms
+        qs = self.get_queryset()
+        return [self._construct_form(i, instance=qs[i]) for i in range(self.total_form_count())]
 
     def _construct_form(self, i, **kwargs):
         """
