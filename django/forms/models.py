@@ -22,6 +22,7 @@ from django.forms.widgets import (
 from django.utils import six
 from django.utils.deprecation import RemovedInDjango19Warning
 from django.utils.encoding import force_text, smart_text
+from django.utils.functional import cached_property
 from django.utils.text import capfirst, get_text_list
 from django.utils.translation import ugettext, ugettext_lazy as _
 
@@ -576,6 +577,21 @@ class BaseModelFormSet(BaseFormSet):
         while field.rel is not None:
             field = field.rel.get_related_field()
         return field.to_python
+
+    @cached_property
+    def forms(self):
+        """
+        Instantiate forms at first property access.
+        """
+        # DoS protection is included in total_form_count()
+        qs = self.get_queryset()
+        forms = []
+        for i in range(self.total_form_count()):
+            if i < self.initial_form_count():
+                forms.append(self._construct_form(i, instance=qs[i]))
+            else:
+                forms.append(self._construct_form(i))
+        return forms
 
     def _construct_form(self, i, **kwargs):
         if self.is_bound and i < self.initial_form_count():
