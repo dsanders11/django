@@ -139,7 +139,7 @@ class UpdateQuery(Query):
         Used by add_update_values() as well as the "fast" update path when
         saving models.
         """
-       for field, model, val in values_seq:
+        for field, model, val in values_seq:
             if hasattr(val, 'resolve_expression'):
                 # Resolve expressions here so that annotations are no longer needed
                 val = val.resolve_expression(self, allow_joins=False, for_save=True)
