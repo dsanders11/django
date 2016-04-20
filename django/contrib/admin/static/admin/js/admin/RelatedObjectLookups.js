@@ -53,6 +53,8 @@ function dismissRelatedLookupPopup(win, chosenId) {
     } else {
         document.getElementById(name).value = chosenId;
     }
+    // Trigger a change event to update related links if required.
+    django.jQuery(elem).trigger('change');
     win.close();
 }
 
