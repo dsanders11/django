@@ -774,7 +774,7 @@ class BooleanField(Field):
         if initial == 'False':
             # show_hidden_initial may have transformed False to 'False'
             initial = False
-        return bool(initial) != bool(data)
+        return bool(initial) != self.to_python(data)
 
 
 class NullBooleanField(BooleanField):
@@ -807,9 +807,7 @@ class NullBooleanField(BooleanField):
         # None (unknown) and False (No) are not the same
         if initial is not None:
             initial = bool(initial)
-        if data is not None:
-            data = bool(data)
-        return initial != data
+        return initial != self.to_python(data)
 
 
 class CallableChoiceIterator(object):
