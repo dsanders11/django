@@ -1457,7 +1457,8 @@ class ModelAdmin(BaseModelAdmin):
             except FieldDoesNotExist:
                 continue
             # We have to special-case M2Ms as a list of comma-separated PKs.
-            if isinstance(f, models.ManyToManyField):
+            # Backported from: https://code.djangoproject.com/ticket/24227
+            if f.many_to_many:
                 initial[k] = initial[k].split(",")
         return initial
 
