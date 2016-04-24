@@ -28,6 +28,11 @@ Python compatibility
 Django 1.8 requires Python 2.7, 3.2, 3.3, 3.4, or 3.5. We **highly recommend**
 and only officially support the latest release of each series.
 
+Django 1.8 is the first release to support Python 3.5.
+
+Due to the end of upstream support for Python 3.2 in February 2016, we won't
+test Django 1.8.x on Python 3.2 after the end of 2016.
+
 What's new in Django 1.8
 ========================
 
@@ -1081,10 +1086,10 @@ Miscellaneous
   parameters. Internally, Django will continue to provide the
   ``pk`` parameter in ``params`` for backwards compatibility.
 
-* ``UserCreationForm.errors_messages['duplicate_username']`` is no longer used.
+* ``UserCreationForm.error_messages['duplicate_username']`` is no longer used.
   If you wish to customize that error message, :ref:`override it on the form
   <modelforms-overriding-default-fields>` using the ``'unique'`` key in
-  ``Meta.errors_messages['username']`` or, if you have a custom form field for
+  ``Meta.error_messages['username']`` or, if you have a custom form field for
   ``'username'``, using the the ``'unique'`` key in its
   :attr:`~django.forms.Field.error_messages` argument.
 
@@ -1352,6 +1357,9 @@ to ensure compatibility when reversing by Python path is removed in Django 1.10.
 Similarly for GIS sitemaps, add ``name='django.contrib.gis.sitemaps.views.kml'``
 or ``name='django.contrib.gis.sitemaps.views.kmz'``.
 
+If you are using a Python path for the :setting:`LOGIN_URL` or
+:setting:`LOGIN_REDIRECT_URL` setting, use the name of the ``url()`` instead.
+
 .. _security issue: https://www.djangoproject.com/weblog/2014/apr/21/security/#s-issue-unexpected-code-execution-using-reverse
 
 Aggregate methods and modules
@@ -1565,6 +1573,19 @@ If you're passing a :class:`~django.template.Context` in ``context_instance``,
 pass a :class:`dict` in the ``context`` parameter instead. If you're passing a
 :class:`~django.template.RequestContext`, pass the request separately in the
 ``request`` parameter.
+
+If you're using ``context_instance=RequestContext(request))`` with
+``render_to_response()``, use :func:`django.shortcuts.render`, which always
+makes ``RequestContext`` available, instead. For example::
+
+    from django.shortcuts import render_to_response
+    from django.template import RequestContext
+    render_to_response('template.html', {...}, context_instance=RequestContext(request))
+
+becomes::
+
+    from django.shortcuts import render
+    render(request, 'template.html', {...})
 
 ``dirs`` argument of template-finding functions
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

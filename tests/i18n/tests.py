@@ -14,7 +14,9 @@ from unittest import skipUnless
 from django.conf import settings
 from django.template import Context, Template
 from django.template.base import TemplateSyntaxError
-from django.test import RequestFactory, TestCase, override_settings
+from django.test import (
+    RequestFactory, SimpleTestCase, TestCase, override_settings,
+)
 from django.utils import six, translation
 from django.utils._os import upath
 from django.utils.formats import (
@@ -226,6 +228,14 @@ class TranslationTests(TestCase):
             long(4)   # NOQA: long undefined on PY3
         )
         self.assertEqual(result % {'name': 'Joe', 'num': 4}, "Joe has 4 good results")
+
+    def test_ungettext_lazy_pickle(self):
+        s1 = ungettext_lazy('%d good result', '%d good results')
+        self.assertEqual(s1 % 1, '1 good result')
+        self.assertEqual(s1 % 8, '8 good results')
+        s2 = pickle.loads(pickle.dumps(s1))
+        self.assertEqual(s2 % 1, '1 good result')
+        self.assertEqual(s2 % 8, '8 good results')
 
     @override_settings(LOCALE_PATHS=extended_locale_paths)
     def test_pgettext(self):
@@ -930,6 +940,11 @@ class FormattingTests(TestCase):
     def test_format_arbitrary_settings(self):
         self.assertEqual(get_format('DEBUG'), 'DEBUG')
 
+    def test_get_custom_format(self):
+        with self.settings(FORMAT_MODULE_PATH='i18n.other.locale'):
+            with translation.override('fr', deactivate=True):
+                self.assertEqual('d/m/Y CUSTOM', get_format('CUSTOM_DAY_FORMAT'))
+
 
 class MiscTests(TestCase):
 
@@ -1266,6 +1281,10 @@ class TestLanguageInfo(TestCase):
 
     def test_unknown_language_code(self):
         six.assertRaisesRegex(self, KeyError, r"Unknown language code xx\.", get_language_info, 'xx')
+        with translation.override('xx'):
+            # A language with no translation catalogs should fallback to the
+            # untranslated string.
+            self.assertEqual(ugettext("Title"), "Title")
 
     def test_unknown_only_country_code(self):
         li = get_language_info('de-xx')
@@ -1522,3 +1541,22 @@ class TranslationFilesMissing(TestCase):
         self.patchGettextFind()
         trans_real._translations = {}
         self.assertRaises(IOError, activate, 'en')
+
+
+class NonDjangoLanguageTests(SimpleTestCase):
+    """
+    A language non present in default Django languages can still be
+    installed/used by a Django project.
+    """
+    @override_settings(
+        USE_I18N=True,
+        LANGUAGES=[
+            ('en-us', 'English'),
+            ('xxx', 'Somelanguage'),
+        ],
+        LANGUAGE_CODE='xxx',
+        LOCALE_PATHS=[os.path.join(here, 'commands', 'locale')],
+    )
+    def test_non_django_language(self):
+        self.assertEqual(get_language(), 'xxx')
+        self.assertEqual(ugettext("year"), "reay")

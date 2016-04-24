@@ -9,7 +9,7 @@ from operator import attrgetter
 
 from django.core.exceptions import FieldError
 from django.db import DEFAULT_DB_ALIAS, connection
-from django.db.models import F, Q, Count
+from django.db.models import Count, F, Q
 from django.db.models.sql.constants import LOUTER
 from django.db.models.sql.datastructures import EmptyResultSet
 from django.db.models.sql.where import EverythingNode, NothingNode, WhereNode
@@ -20,7 +20,7 @@ from django.utils.deprecation import RemovedInDjango19Warning
 from django.utils.six.moves import range
 
 from .models import (
-    FK1, X, Annotation, Article, Author, BaseA, Book, CategoryItem,
+    FK1, Annotation, Article, Author, BaseA, Book, CategoryItem,
     CategoryRelationship, Celebrity, Channel, Chapter, Child, ChildObjectA,
     Classroom, Company, Cover, CustomPk, CustomPkTag, Detail, DumbCategory,
     Eaten, Employment, ExtraInfo, Fan, Food, Identifier, Individual, Item, Job,
@@ -32,7 +32,7 @@ from .models import (
     RelatedIndividual, RelatedObject, Report, ReservedName, Responsibility,
     School, SharedConnection, SimpleCategory, SingleObject, SpecialCategory,
     Staff, StaffUser, Student, Tag, Task, Ticket21203Child, Ticket21203Parent,
-    Ticket23605A, Ticket23605B, Ticket23605C, TvChef, Valid,
+    Ticket23605A, Ticket23605B, Ticket23605C, TvChef, Valid, X,
 )
 
 
@@ -1854,7 +1854,7 @@ class Queries6Tests(TestCase):
     def test_tickets_8921_9188(self):
         # Incorrect SQL was being generated for certain types of exclude()
         # queries that crossed multi-valued relations (#8921, #9188 and some
-        # pre-emptively discovered cases).
+        # preemptively discovered cases).
 
         self.assertQuerysetEqual(
             PointerA.objects.filter(connection__pointerb__id=1),
@@ -3086,7 +3086,7 @@ class NullJoinPromotionOrTest(TestCase):
         p1 = Program.objects.create(identifier=i1)
         c1 = Channel.objects.create(identifier=i1)
         p2 = Program.objects.create(identifier=i2)
-        # Test OR + doubleneq. The expected result is that channel is LOUTER
+        # Test OR + doubleneg. The expected result is that channel is LOUTER
         # joined, program INNER joined
         qs1_filter = Identifier.objects.filter(
             Q(program__id=p2.id, channel__id=c1.id)
@@ -3173,7 +3173,7 @@ class JoinReuseTest(TestCase):
 
 
 class DisjunctionPromotionTests(TestCase):
-    def test_disjuction_promotion_select_related(self):
+    def test_disjunction_promotion_select_related(self):
         fk1 = FK1.objects.create(f1='f1', f2='f2')
         basea = BaseA.objects.create(a=fk1)
         qs = BaseA.objects.filter(Q(a=fk1) | Q(b=2))

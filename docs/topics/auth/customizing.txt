@@ -127,7 +127,8 @@ variable defined in your ``settings.py`` file and creates a Django ``User``
 object the first time a user authenticates::
 
     from django.conf import settings
-    from django.contrib.auth.models import User, check_password
+    from django.contrib.auth.hashers import check_password
+    from django.contrib.auth.models import User
 
     class SettingsBackend(object):
         """
@@ -136,7 +137,7 @@ object the first time a user authenticates::
         Use the login name, and a hash of the password. For example:
 
         ADMIN_LOGIN = 'admin'
-        ADMIN_PASSWORD = 'sha1$4e987$afbcf42e21bd417fb71db8c66b321e9fc33051de'
+        ADMIN_PASSWORD = 'pbkdf2_sha256$30000$Vo0VlMnkR4Bk$qEvtdyZRWTcOsCnI/oQ7fVOu1XAURIZYoOZ3iq8Dr4M='
         """
 
         def authenticate(self, username=None, password=None):
@@ -329,7 +330,7 @@ add it to a ``UserAdmin`` class which is registered with the
 :class:`~django.contrib.auth.models.User` class::
 
     from django.contrib import admin
-    from django.contrib.auth.admin import UserAdmin
+    from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
     from django.contrib.auth.models import User
 
     from my_user_profile_app.models import Employee
@@ -342,7 +343,7 @@ add it to a ``UserAdmin`` class which is registered with the
         verbose_name_plural = 'employee'
 
     # Define a new User admin
-    class UserAdmin(UserAdmin):
+    class UserAdmin(BaseUserAdmin):
         inlines = (EmployeeInline, )
 
     # Re-register UserAdmin
@@ -896,62 +897,6 @@ If your project uses proxy models, you must either modify the proxy to extend
 the User model that is currently in use in your project, or merge your proxy's
 behavior into your User subclass.
 
-Custom users and testing/fixtures
----------------------------------
-
-If you are writing an application that interacts with the User model, you must
-take some precautions to ensure that your test suite will run regardless of
-the User model that is being used by a project. Any test that instantiates an
-instance of User will fail if the User model has been swapped out. This
-includes any attempt to create an instance of User with a fixture.
-
-To ensure that your test suite will pass in any project configuration,
-``django.contrib.auth.tests.utils`` defines a ``@skipIfCustomUser`` decorator.
-This decorator will cause a test case to be skipped if any User model other
-than the default Django user is in use. This decorator can be applied to a
-single test, or to an entire test class.
-
-Depending on your application, tests may also be needed to be added to ensure
-that the application works with *any* user model, not just the default User
-model. To assist with this, Django provides two substitute user models that
-can be used in test suites:
-
-.. class:: tests.custom_user.CustomUser
-
-  A custom user model that uses an ``email`` field as the username, and has a basic
-  admin-compliant permissions setup
-
-.. class:: tests.custom_user.ExtensionUser
-
-  A custom user model that extends ``django.contrib.auth.models.AbstractUser``,
-  adding a ``date_of_birth`` field.
-
-You can then use the ``@override_settings`` decorator to make that test run
-with the custom User model. For example, here is a skeleton for a test that
-would test three possible User models -- the default, plus the two User
-models provided by ``auth`` app::
-
-    from django.contrib.auth.tests.utils import skipIfCustomUser
-    from django.contrib.auth.tests.custom_user import CustomUser, ExtensionUser
-    from django.test import TestCase, override_settings
-
-
-    class ApplicationTestCase(TestCase):
-        @skipIfCustomUser
-        def test_normal_user(self):
-            "Run tests for the normal user model"
-            self.assertSomething()
-
-        @override_settings(AUTH_USER_MODEL='auth.CustomUser')
-        def test_custom_user(self):
-            "Run tests for a custom user model with email-based authentication"
-            self.assertSomething()
-
-        @override_settings(AUTH_USER_MODEL='auth.ExtensionUser')
-        def test_extension_user(self):
-            "Run tests for a simple extension of the built-in User."
-            self.assertSomething()
-
 A full example
 --------------
 
@@ -1052,7 +997,7 @@ code would be required in the app's ``admin.py`` file::
     from django import forms
     from django.contrib import admin
     from django.contrib.auth.models import Group
-    from django.contrib.auth.admin import UserAdmin
+    from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
     from django.contrib.auth.forms import ReadOnlyPasswordHashField
 
     from customauth.models import MyUser
@@ -1103,7 +1048,7 @@ code would be required in the app's ``admin.py`` file::
             return self.initial["password"]
 
 
-    class MyUserAdmin(UserAdmin):
+    class UserAdmin(BaseUserAdmin):
         # The forms to add and change user instances
         form = UserChangeForm
         add_form = UserCreationForm
@@ -1131,7 +1076,7 @@ code would be required in the app's ``admin.py`` file::
         filter_horizontal = ()
 
     # Now register the new UserAdmin...
-    admin.site.register(MyUser, MyUserAdmin)
+    admin.site.register(MyUser, UserAdmin)
     # ... and, since we're not using Django's built-in permissions,
     # unregister the Group model from admin.
     admin.site.unregister(Group)

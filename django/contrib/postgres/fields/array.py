@@ -95,8 +95,11 @@ class ArrayField(Field):
         base_field = self.base_field
 
         for val in vals:
-            obj = AttributeSetter(base_field.attname, val)
-            values.append(base_field.value_to_string(obj))
+            if val is None:
+                values.append(None)
+            else:
+                obj = AttributeSetter(base_field.attname, val)
+                values.append(base_field.value_to_string(obj))
         return json.dumps(values)
 
     def get_transform(self, name):
@@ -198,7 +201,11 @@ class ArrayLenTransform(Transform):
 
     def as_sql(self, compiler, connection):
         lhs, params = compiler.compile(self.lhs)
-        return 'array_length(%s, 1)' % lhs, params
+        # Distinguish NULL and empty arrays
+        return (
+            'CASE WHEN %(lhs)s IS NULL THEN NULL ELSE '
+            'coalesce(array_length(%(lhs)s, 1), 0) END'
+        ) % {'lhs': lhs}, params
 
 
 class IndexTransform(Transform):

@@ -468,6 +468,20 @@ class FormsTestCase(TestCase):
         f = BeatleForm(auto_id=False)
         self.assertHTMLEqual('\n'.join(str(bf) for bf in f['name']), '<input type="text" name="name" />')
 
+    def test_boundfield_slice(self):
+        class BeatleForm(Form):
+            name = ChoiceField(
+                choices=[('john', 'John'), ('paul', 'Paul'), ('george', 'George'), ('ringo', 'Ringo')],
+                widget=RadioSelect,
+            )
+
+        f = BeatleForm()
+        bf = f['name']
+        self.assertEqual(
+            [str(item) for item in bf[1:]],
+            [str(bf[1]), str(bf[2]), str(bf[3])],
+        )
+
     def test_forms_with_multiple_choice(self):
         # MultipleChoiceField is a special case, as its data is required to be a list:
         class SongForm(Form):
@@ -517,7 +531,7 @@ class FormsTestCase(TestCase):
         self.assertHTMLEqual(str(f['when']), '<input type="text" name="when_0" value="1992-01-01" id="id_when_0" /><input type="text" name="when_1" value="01:01" id="id_when_1" />')
         self.assertHTMLEqual(f['when'].as_hidden(), '<input type="hidden" name="when_0" value="1992-01-01" id="id_when_0" /><input type="hidden" name="when_1" value="01:01" id="id_when_1" />')
 
-    def test_mulitple_choice_checkbox(self):
+    def test_multiple_choice_checkbox(self):
         # MultipleChoiceField can also be used with the CheckboxSelectMultiple widget.
         class SongForm(Form):
             name = CharField()
