@@ -343,6 +343,9 @@ class HashedFilesMixin(object):
         return name
 
     def _stored_name(self, name, hashed_files):
+        # Normalize the path so that we avoid multiple names for the same file like
+        # ../foo/bar.css or ../foo/../foo/bar.css which normalize to the same path
+        name = posixpath.normpath(name)
         hash_key = self.hash_key(name)
         cache_name = hashed_files.get(hash_key)
         if cache_name is None:
