@@ -17,6 +17,8 @@ from django.core.files.base import ContentFile
 from django.core.files.storage import FileSystemStorage, get_storage_class
 from django.utils.encoding import force_bytes, force_text
 from django.utils.functional import LazyObject
+from django.utils.six import iteritems
+from django.utils.six.moves import range
 from django.utils.six.moves.urllib.parse import (
     unquote, urldefrag, urlsplit, urlunsplit,
 )
@@ -76,7 +78,7 @@ class HashedFilesMixin(object):
 
     def file_hash(self, name, content=None):
         """
-        Returns a hash of the file with the given name and optional content.
+        Return a hash of the file with the given name and optional content.
         """
         if content is None:
             return None
@@ -87,7 +89,7 @@ class HashedFilesMixin(object):
 
     def hashed_name(self, name, content=None, filename=None):
         # filename = name of file to hash if no content
-        # name = base name to construct new hashed filename from        
+        # name = base name to construct new hashed filename from
 
         parsed_name = urlsplit(unquote(name))
         clean_name = parsed_name.path.strip()
@@ -127,7 +129,7 @@ class HashedFilesMixin(object):
 
     def _url(self, hashed_name_func, name, force=False, hashed_files=None):
         """
-        Returns the real URL in DEBUG mode.
+        Return the real URL in DEBUG mode.
         """
         if settings.DEBUG and not force:
             hashed_name, fragment = name, ''
@@ -165,52 +167,60 @@ class HashedFilesMixin(object):
 
     def url_converter(self, name, hashed_files, template=None):
         """
-        Returns the custom URL converter for the given file name.
+        Return the custom URL converter for the given file name.
         """
         if template is None:
             template = self.default_template
 
         def converter(matchobj):
             """
-            Converts the matched URL depending on the parent level (`..`)
-            and returns the normalized and hashed URL using the url method
-            of the storage.
+            Convert the matched URL to a normalized and hashed URL.
+
+            This requires figuring out which files the matched URL resolves
+            to and calling the url() method of the storage.
             """
             matched, url = matchobj.groups()
-            # Completely ignore http(s) prefixed URLs,
-            # fragments and data-uri URLs
-            if url.startswith(('#', 'http:', 'https:', 'data:', '//')):
+
+            # Ignore absolute/protocol-relative, fragments and data-uri URLs.
+            if url.startswith(('http:', 'https:', '//', '#', 'data:')):
                 return matched
-            name_parts = name.split(os.sep)
-            # Using posix normpath here to remove duplicates
-            url = posixpath.normpath(url)
-            url_parts = url.split('/')
-            parent_level, sub_level = url.count('..'), url.count('/')
-            if url.startswith('/'):
-                sub_level -= 1
-                url_parts = url_parts[1:]
-            if parent_level or not url.startswith('/'):
-                start, end = parent_level + 1, parent_level
+
+            # Ignore absolute URLs that don't point to a static file (dynamic
+            # CSS / JS?). Note that STATIC_URL cannot be empty.
+            if url.startswith('/') and not url.startswith(settings.STATIC_URL):
+                return matched
+
+            # Strip off the fragment so a path-like fragment won't interfere.
+            url_path, fragment = urldefrag(url)
+
+            if url_path.startswith('/'):
+                # Otherwise the condition above would have returned prematurely.
+                assert url_path.startswith(settings.STATIC_URL)
+                target_name = url_path[len(settings.STATIC_URL):]
             else:
-                if sub_level:
-                    if sub_level == 1:
-                        parent_level -= 1
-                    start, end = parent_level, 1
-                else:
-                    start, end = 1, sub_level - 1
-            joined_result = '/'.join(name_parts[:-start] + url_parts[end:])
-            hashed_url = self._url(self._stored_name, unquote(joined_result), force=True, hashed_files=hashed_files)
-            file_name = hashed_url.split('/')[-1:]
-            relative_url = '/'.join(url.split('/')[:-1] + file_name)
+                # We're using the posixpath module to mix paths and URLs conveniently.
+                source_name = name if os.sep == '/' else name.replace(os.sep, '/')
+                target_name = posixpath.join(posixpath.dirname(source_name), url_path)
+
+            # Determine the hashed name of the target file with the storage backend.
+            hashed_url = self._url(self._stored_name, unquote(target_name), force=True, hashed_files=hashed_files)
+
+            transformed_url = '/'.join(url_path.split('/')[:-1] + hashed_url.split('/')[-1:])
+
+            # Restore the fragment that was stripped off earlier.
+            if fragment:
+                transformed_url += ('?#' if '?#' in url else '#') + fragment
 
             # Return the hashed version to the file
-            return template % unquote(relative_url)
+            return template % unquote(transformed_url)
 
         return converter
 
     def _post_process(self, paths, adjustable_paths, hashed_files):
         # then sort the files by the directory level
-        path_level = lambda name: len(name.split(os.sep))
+        def path_level(name):
+            return len(name.split(os.sep))
+
         for name in sorted(paths.keys(), key=path_level, reverse=True):
             substitutions = True
 
@@ -221,7 +231,7 @@ class HashedFilesMixin(object):
 
                 # generate the hash with the original content, even for
                 # adjustable files.
-                if not hashed_files.get(self.hash_key(name), None):
+                if self.hash_key(name) not in hashed_files:
                     hashed_name = self.hashed_name(name, original_file)
                 else:
                     hashed_name = hashed_files[self.hash_key(name)]
@@ -236,13 +246,14 @@ class HashedFilesMixin(object):
                 # ..to apply each replacement pattern to the content
                 if name in adjustable_paths:
                     content = original_file.read().decode(settings.FILE_CHARSET)
-                    for patterns in self._patterns.values():
-                        for pattern, template in patterns:
-                            converter = self.url_converter(name, hashed_files, template)
-                            try:
-                                content = pattern.sub(converter, content)
-                            except ValueError as exc:
-                                yield name, None, exc, False
+                    for extension, patterns in iteritems(self._patterns):
+                        if matches_patterns(path, (extension,)):
+                            for pattern, template in patterns:
+                                converter = self.url_converter(name, hashed_files, template)
+                                try:
+                                    content = pattern.sub(converter, content)
+                                except ValueError as exc:
+                                    yield name, None, exc, False
                     if hashed_file_exists:
                         self.delete(hashed_name)
                     # then save the processed result
@@ -270,7 +281,7 @@ class HashedFilesMixin(object):
                         hashed_name = force_text(self.clean_name(saved_name))
 
                 # and then set the cache accordingly
-                hashed_files[self.hash_key(name)] = hashed_name                    
+                hashed_files[self.hash_key(name)] = hashed_name
 
                 yield name, hashed_name, processed, substitutions
 
@@ -292,28 +303,35 @@ class HashedFilesMixin(object):
         if dry_run:
             return
 
+        # where to store the new paths
         hashed_files = OrderedDict()
 
         # build a list of adjustable files
-        matches = lambda path: matches_patterns(path, self._patterns.keys())
-        adjustable_paths = {path: paths[path] for path in paths if matches(path)}
+        adjustable_paths = [
+            path for path in paths
+            if matches_patterns(path, self._patterns.keys())
+        ]
 
         # Do a single pass first, this will post-process all files once, then we can repeat for adjustable files
-        for name, hashed_name, processed, substitutions in self._post_process(paths, adjustable_paths.keys(), hashed_files):
+        for name, hashed_name, processed, _ in self._post_process(paths, adjustable_paths, hashed_files):
             yield name, hashed_name, processed
 
-        for i in xrange(0, self.max_post_process_passes):
-            any_substitutions = False
+        paths = {
+            path: paths[path] for path in adjustable_paths
+        }
 
-            for name, hashed_name, processed, substitutions in self._post_process(adjustable_paths, adjustable_paths.keys(), hashed_files):
+        for i in range(0, self.max_post_process_passes):
+            substitutions = False
+
+            for name, hashed_name, processed, subst in self._post_process(paths, adjustable_paths, hashed_files):
                 yield name, hashed_name, processed
-                any_substitutions = any_substitutions or substitutions
+                substitutions = substitutions or subst
 
-            if not any_substitutions:
+            if not substitutions:
                 break
 
-        if any_substitutions:
-            raise RuntimeError("Max post-process passes exceeded")
+        if substitutions:
+            yield 'All', None, RuntimeError("Max post-process passes exceeded")
 
         # Finally store the processed paths
         self.hashed_files.update(hashed_files)
@@ -325,6 +343,9 @@ class HashedFilesMixin(object):
         return name
 
     def _stored_name(self, name, hashed_files):
+        # Normalize the path so that we avoid multiple names for the same file like
+        # ../foo/bar.css or ../foo/../foo/bar.css which normalize to the same path
+        name = posixpath.normpath(name)
         hash_key = self.hash_key(name)
         cache_name = hashed_files.get(hash_key)
         if cache_name is None:
@@ -385,7 +406,7 @@ class ManifestFilesMixin(HashedFilesMixin):
         except ValueError:
             pass
         else:
-            version = stored.get('version', None)
+            version = stored.get('version')
             if version == '1.0':
                 return stored.get('paths', OrderedDict())
         raise ValueError("Couldn't load manifest '%s' (version %s)" %
@@ -435,7 +456,7 @@ class _MappingCache(object):
         self.cache.set(key, value)
 
     def __getitem__(self, key):
-        value = self.cache.get(key, None)
+        value = self.cache.get(key)
         if value is None:
             raise KeyError("Couldn't find a file name '%s'" % key)
         return value
