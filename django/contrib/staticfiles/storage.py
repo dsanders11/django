@@ -18,6 +18,7 @@ from django.core.files.storage import FileSystemStorage, get_storage_class
 from django.utils.encoding import force_bytes, force_text
 from django.utils.functional import LazyObject
 from django.utils.six import iteritems
+from django.utils.six.moves import range
 from django.utils.six.moves.urllib.parse import (
     unquote, urldefrag, urlsplit, urlunsplit,
 )
@@ -88,7 +89,7 @@ class HashedFilesMixin(object):
 
     def hashed_name(self, name, content=None, filename=None):
         # filename = name of file to hash if no content
-        # name = base name to construct new hashed filename from        
+        # name = base name to construct new hashed filename from
 
         parsed_name = urlsplit(unquote(name))
         clean_name = parsed_name.path.strip()
@@ -230,7 +231,7 @@ class HashedFilesMixin(object):
 
                 # generate the hash with the original content, even for
                 # adjustable files.
-                if not hashed_files.get(self.hash_key(name)):
+                if self.hash_key(name) not in hashed_files:
                     hashed_name = self.hashed_name(name, original_file)
                 else:
                     hashed_name = hashed_files[self.hash_key(name)]
@@ -309,20 +310,20 @@ class HashedFilesMixin(object):
         adjustable_paths = {path: paths[path] for path in paths if matches(path)}
 
         # Do a single pass first, this will post-process all files once, then we can repeat for adjustable files
-        for name, hashed_name, processed, substitutions in self._post_process(paths, adjustable_paths.keys(), hashed_files):
+        for name, hashed_name, processed, _ in self._post_process(paths, adjustable_paths.keys(), hashed_files):
             yield name, hashed_name, processed
 
-        for i in xrange(0, self.max_post_process_passes):
-            any_substitutions = False
+        for i in range(0, self.max_post_process_passes):
+            substitutions = False
 
-            for name, hashed_name, processed, substitutions in self._post_process(adjustable_paths, adjustable_paths.keys(), hashed_files):
+            for name, hashed_name, processed, subst in self._post_process(adjustable_paths, adjustable_paths.keys(), hashed_files):
                 yield name, hashed_name, processed
-                any_substitutions = any_substitutions or substitutions
+                substitutions = substitutions or subst
 
-            if not any_substitutions:
+            if not substitutions:
                 break
 
-        if any_substitutions:
+        if substitutions:
             yield 'All', None, RuntimeError("Max post-process passes exceeded")
 
         # Finally store the processed paths
