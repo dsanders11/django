@@ -230,6 +230,17 @@ class TestCollectionCachedStorage(TestHashedFiles, CollectionTestCase):
         cached_name = storage.staticfiles_storage.hashed_files.get(cache_key)
         self.assertEqual(cached_name, hashed_name)
 
+        # Ensure everything looks as expected for files which we know had to be hashed
+        # multiple times since their content includes other files that were hashed
+        name = "cached/relative.css"
+        hashed_name = "cached/relative.c3e9e1ea6f2e.css"
+        cache_key = storage.staticfiles_storage.hash_key(name)
+        cached_name = storage.staticfiles_storage.hashed_files.get(cache_key)
+        self.assertEqual(cached_name, None)
+        self.assertEqual(self.hashed_file_path(name), hashed_name)
+        cached_name = storage.staticfiles_storage.hashed_files.get(cache_key)
+        self.assertEqual(cached_name, hashed_name)
+
     def test_cache_key_memcache_validation(self):
         """
         Handle cache key creation correctly, see #17861.
