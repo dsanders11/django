@@ -303,20 +303,27 @@ class HashedFilesMixin(object):
         if dry_run:
             return
 
+        # where to store the new paths
         hashed_files = OrderedDict()
 
         # build a list of adjustable files
-        matches = lambda path: matches_patterns(path, self._patterns.keys())
-        adjustable_paths = {path: paths[path] for path in paths if matches(path)}
+        adjustable_paths = [
+            path for path in paths
+            if matches_patterns(path, self._patterns.keys())
+        ]
 
         # Do a single pass first, this will post-process all files once, then we can repeat for adjustable files
-        for name, hashed_name, processed, _ in self._post_process(paths, adjustable_paths.keys(), hashed_files):
+        for name, hashed_name, processed, _ in self._post_process(paths, adjustable_paths, hashed_files):
             yield name, hashed_name, processed
+
+        paths = {
+            path: paths[path] for path in adjustable_paths
+        }
 
         for i in range(0, self.max_post_process_passes):
             substitutions = False
 
-            for name, hashed_name, processed, subst in self._post_process(adjustable_paths, adjustable_paths.keys(), hashed_files):
+            for name, hashed_name, processed, subst in self._post_process(paths, adjustable_paths, hashed_files):
                 yield name, hashed_name, processed
                 substitutions = substitutions or subst
 
