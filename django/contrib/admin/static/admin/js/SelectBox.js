@@ -12,7 +12,7 @@ var SelectBox = {
     redisplay: function(id) {
         // Repopulate HTML select box from cache
         var box = document.getElementById(id);
-        $(box).empty();
+        box.innerHTML = "";
         var new_options = box.outerHTML.slice(0, -9);
         for (var i = 0, j = SelectBox.cache[id].length; i < j; i++) {
             var node = SelectBox.cache[id][i];
@@ -23,19 +23,22 @@ var SelectBox = {
                 new_options += new_option.outerHTML;
             }
         }
-        new_options += "</select>";
-        $(box).replaceWith($(new_options));
+        box.outerHTML = new_options;
     },
     filter: function(id, text) {
         // Redisplay the HTML select box, displaying only the choices containing ALL
         // the words in text. (It's an AND search.)
+        var cache = SelectBox.cache[id];
         var tokens = text.toLowerCase().split(/\s+/);
         var node, token;
-        for (var i = 0; (node = SelectBox.cache[id][i]); i++) {
+        for (var i = 0; (node = cache[i]); i++) {
+            var node_text = node.text.toLowerCase();
             node.displayed = 1;
+
             for (var j = 0; (token = tokens[j]); j++) {
-                if (node.text.toLowerCase().indexOf(token) == -1) {
+                if (node_text.indexOf(token) == -1) {
                     node.displayed = 0;
+                    break;
                 }
             }
         }
@@ -43,25 +46,24 @@ var SelectBox = {
     },
     delete_from_cache: function(id, value) {
         var node, delete_index = null;
-        for (var i = 0; (node = SelectBox.cache[id][i]); i++) {
-            if (node.value == value) {
+        var cache = SelectBox.cache[id];
+        for (var i = 0, j = cache.length; i < j; i++) {
+            node = cache[i];
+            if (node.value === value) {
                 delete_index = i;
                 break;
             }
         }
-        var j = SelectBox.cache[id].length - 1;
-        for (var i = delete_index; i < j; i++) {
-            SelectBox.cache[id][i] = SelectBox.cache[id][i+1];
-        }
-        SelectBox.cache[id].length--;
+        cache.splice(delete_index, 1);
     },
     add_to_cache: function(id, option) {
         SelectBox.cache[id].push({value: option.value, text: option.text, displayed: 1});
     },
     cache_contains: function(id, value) {
         // Check if an item is contained in the cache
+        var cache = SelectBox.cache[id];
         var node;
-        for (var i = 0; (node = SelectBox.cache[id][i]); i++) {
+        for (var i = 0; (node = cache[i]); i++) {
             if (node.value == value) {
                 return true;
             }
@@ -69,28 +71,26 @@ var SelectBox = {
         return false;
     },
     move: function(from, to) {
-        var from_box = document.getElementById(from);
-        var to_box = document.getElementById(to);
-        var option;
-        for (var i = 0; (option = from_box.options[i]); i++) {
-            if (option.selected && SelectBox.cache_contains(from, option.value)) {
-                SelectBox.add_to_cache(to, {value: option.value, text: option.text, displayed: 1});
-                SelectBox.delete_from_cache(from, option.value);
+        $('#' + from + ' option:selected').each(function(idx, option) {
+            var value = option.value;
+
+            if (SelectBox.cache_contains(from, value)) {
+                SelectBox.add_to_cache(to, {value: value, text: option.text, displayed: 1});
+                SelectBox.delete_from_cache(from, value);
             }
-        }
+        });
         SelectBox.redisplay(from);
         SelectBox.redisplay(to);
     },
     move_all: function(from, to) {
-        var from_box = document.getElementById(from);
-        var to_box = document.getElementById(to);
-        var option;
-        for (var i = 0; (option = from_box.options[i]); i++) {
-            if (SelectBox.cache_contains(from, option.value)) {
-                SelectBox.add_to_cache(to, {value: option.value, text: option.text, displayed: 1});
-                SelectBox.delete_from_cache(from, option.value);
+        $('#' + from + ' option').each(function(idx, option) {
+            var value = option.value;
+
+            if (SelectBox.cache_contains(from, value)) {
+                SelectBox.add_to_cache(to, {value: value, text: option.text, displayed: 1});
+                SelectBox.delete_from_cache(from, value);
             }
-        }
+        });
         SelectBox.redisplay(from);
         SelectBox.redisplay(to);
     },
@@ -109,9 +109,6 @@ var SelectBox = {
         } );
     },
     select_all: function(id) {
-        var box = document.getElementById(id);
-        for (var i = 0; i < box.options.length; i++) {
-            box.options[i].selected = 'selected';
-        }
+        $('#' + id + ' option').prop('selected', 'selected');
     }
 }
