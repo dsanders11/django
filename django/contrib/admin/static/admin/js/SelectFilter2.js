@@ -115,8 +115,10 @@ window.SelectFilter = {
     refresh_icons: function(field_id) {
         var from = $('#' + field_id + '_from');
         var to = $('#' + field_id + '_to');
-        var is_from_selected = from.find('option:selected').length > 0;
-        var is_to_selected = to.find('option:selected').length > 0;
+        var is_from_selected = false;
+        var is_to_selected = false;
+        //var is_from_selected = from.find('option:selected').length > 0;
+        //var is_to_selected = to.find('option:selected').length > 0;
         // Active if at least one item is selected
         $('#' + field_id + '_add_link').toggleClass('active', is_from_selected);
         $('#' + field_id + '_remove_link').toggleClass('active', is_to_selected);
