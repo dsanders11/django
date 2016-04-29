@@ -12,16 +12,19 @@ var SelectBox = {
     redisplay: function(id) {
         // Repopulate HTML select box from cache
         var box = document.getElementById(id);
-        box.options.length = 0; // clear all options
+        $(box).empty();
+        var new_options = box.outerHTML.slice(0, -9);
         for (var i = 0, j = SelectBox.cache[id].length; i < j; i++) {
             var node = SelectBox.cache[id][i];
             if (node.displayed) {
                 var new_option = new Option(node.text, node.value, false, false);
                 // Shows a tooltip when hovering over the option
                 new_option.setAttribute("title", node.text);
-                box.options[box.options.length] = new_option;
+                new_options += new_option.outerHTML;
             }
         }
+        new_options += "</select>";
+        $(box).replaceWith($(new_options));
     },
     filter: function(id, text) {
         // Redisplay the HTML select box, displaying only the choices containing ALL
