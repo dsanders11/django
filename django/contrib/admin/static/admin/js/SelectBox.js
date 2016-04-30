@@ -1,4 +1,4 @@
-(function() {
+(function($) {
     'use strict';
     var SelectBox = {
         cache: {},
@@ -125,4 +125,4 @@
         }
     };
     window.SelectBox = SelectBox;
-})();
+})(django.jQuery);
