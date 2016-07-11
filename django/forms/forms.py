@@ -400,7 +400,7 @@ class BaseForm(object):
             # widgets split data over several HTML fields.
             value = field.widget.value_from_datadict(self.data, self.files, self.add_prefix(name))
             try:
-                if isinstance(field, FileField):
+                if isinstance(field, FileField) or getattr(field.clean, 'needs_initial', False):
                     initial = self.initial.get(name, field.initial)
                     value = field.clean(value, initial)
                 else:
