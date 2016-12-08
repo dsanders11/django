@@ -53,12 +53,27 @@ class StaticFilesStorage(FileSystemStorage):
         return super(StaticFilesStorage, self).path(name)
 
 
+class AdjustablePathPattern(tuple):
+    default_subpattern_template = """'%s'"""
+
+    def __new__(cls, *args, **kwargs):
+        return tuple.__new__(cls, args)
+
+    def __init__(self, *args, **kwargs):
+        self.subpattern = kwargs.pop('subpattern', None)
+
+        super(AdjustablePathPattern, self).__init__(*args, **kwargs)
+
+
 class HashedFilesMixin(object):
     default_template = """url("%s")"""
     patterns = (
         ("*.css", (
             r"""(url\(['"]{0,1}\s*(.*?)["']{0,1}\))""",
             (r"""(@import\s*["']\s*(.*?)["'])""", """@import url("%s")"""),
+        )),
+        ("*.js", (
+            AdjustablePathPattern(r"""(^importScripts\((.*?)\))""", """importScripts(%s)""", subpattern=("""(['"](.*?)['"])""", """'%s'""")),
         )),
     )
     max_post_process_passes = 5
@@ -69,12 +84,22 @@ class HashedFilesMixin(object):
         self.hashed_files = {}
         for extension, patterns in self.patterns:
             for pattern in patterns:
+                if hasattr(pattern, 'subpattern'):
+                    if isinstance(pattern.subpattern, (tuple, list)):
+                        subpattern, subpattern_template = pattern.subpattern
+                    else:
+                        subpattern = pattern.subpattern
+                        subpattern_template = pattern.default_subpattern_template
+                    subpattern = re.compile(subpattern, re.IGNORECASE)
+                else:
+                    subpattern = None
+                    subpattern_template = None
                 if isinstance(pattern, (tuple, list)):
                     pattern, template = pattern
                 else:
                     template = self.default_template
-                compiled = re.compile(pattern, re.IGNORECASE)
-                self._patterns.setdefault(extension, []).append((compiled, template))
+                compiled = re.compile(pattern, re.IGNORECASE|re.MULTILINE)
+                self._patterns.setdefault(extension, []).append((compiled, template, subpattern, subpattern_template))
 
     def file_hash(self, name, content=None):
         """
@@ -248,10 +273,19 @@ class HashedFilesMixin(object):
                     content = original_file.read().decode(settings.FILE_CHARSET)
                     for extension, patterns in iteritems(self._patterns):
                         if matches_patterns(path, (extension,)):
-                            for pattern, template in patterns:
-                                converter = self.url_converter(name, hashed_files, template)
+                            for pattern, template, subpattern, subpattern_template in patterns:
+                                if subpattern:
+                                    converter = self.url_converter(name, hashed_files, subpattern_template)
+                                else:
+                                    converter = self.url_converter(name, hashed_files, template)
                                 try:
-                                    content = pattern.sub(converter, content)
+                                    if subpattern:
+                                        def subpattern_converter(match):
+                                            return template % subpattern.sub(converter, match.groups()[1])
+
+                                        content = pattern.sub(subpattern_converter, content)
+                                    else:
+                                        content = pattern.sub(converter, content)
                                 except ValueError as exc:
                                     yield name, None, exc, False
                     if hashed_file_exists:
