@@ -9,7 +9,7 @@ from datetime import datetime
 
 from django.core.exceptions import ImproperlyConfigured
 from django.core.management.base import BaseCommand, CommandError
-from django.core.servers.basehttp import get_internal_wsgi_application, run
+from django.core.servers.basehttp import get_internal_wsgi_application, run, WSGIServer
 from django.db import DEFAULT_DB_ALIAS, connections
 from django.db.migrations.executor import MigrationExecutor
 from django.utils import autoreload, six
@@ -25,6 +25,8 @@ DEFAULT_PORT = "8000"
 
 
 class Command(BaseCommand):
+    proto = "http"
+    server_cls = WSGIServer
     help = "Starts a lightweight Web server for development."
 
     # Validation is called explicitly each time the server is reloaded.
@@ -122,12 +124,13 @@ class Command(BaseCommand):
         self.stdout.write((
             "%(started_at)s\n"
             "Django version %(version)s, using settings %(settings)r\n"
-            "Starting development server at http://%(addr)s:%(port)s/\n"
+            "Starting development server at %(proto)s://%(addr)s:%(port)s/\n"
             "Quit the server with %(quit_command)s.\n"
         ) % {
             "started_at": now,
             "version": self.get_version(),
             "settings": settings.SETTINGS_MODULE,
+            "proto": self.proto,
             "addr": '[%s]' % self.addr if self._raw_ipv6 else self.addr,
             "port": self.port,
             "quit_command": quit_command,
@@ -140,7 +143,7 @@ class Command(BaseCommand):
         try:
             handler = self.get_handler(*args, **options)
             run(self.addr, int(self.port), handler,
-                ipv6=self.use_ipv6, threading=threading)
+                ipv6=self.use_ipv6, threading=threading, server_cls=self.server_cls)
         except socket.error as e:
             # Use helpful error messages instead of ugly tracebacks.
             ERRORS = {
