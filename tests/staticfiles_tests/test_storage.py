@@ -554,32 +554,45 @@ class TestCollectionHashedFilesCache(CollectionTestCase):
     hashed_file_path = hashed_file_path
 
     def setUp(self):
-        self.testimage_path = os.path.join(
-            TEST_ROOT, 'project', 'documents', 'cached', 'css', 'img', 'window.png'
-        )
-        with open(self.testimage_path, 'r+b') as f:
-            self._orig_image_content = f.read()
         super(TestCollectionHashedFilesCache, self).setUp()
 
-    def tearDown(self):
-        with open(self.testimage_path, 'w+b') as f:
-            f.write(self._orig_image_content)
-        super(TestCollectionHashedFilesCache, self).tearDown()
+        self._temp_dir = temp_dir = tempfile.mkdtemp()
+        os.makedirs(os.path.join(temp_dir, 'test'))
+
+        self.addCleanup(shutil.rmtree, six.text_type(temp_dir))
 
     def test_file_change_after_collectstatic(self):
-        finders.get_finder.cache_clear()
-        err = six.StringIO()
-        call_command('collectstatic', interactive=False, verbosity=0, stderr=err)
-        with open(self.testimage_path, 'w+b') as f:
-            f.write(b"new content of png file to change it's hash")
+        foo_path = os.path.join(self._temp_dir, 'test', 'foo.png')
+        bar_path = os.path.join(self._temp_dir, 'test', 'bar.css')
+        xyz_path = os.path.join(self._temp_dir, 'test', 'xyz.png')
 
-        # Change modification time of self.testimage_path to make sure it gets
-        # collected again.
-        mtime = os.path.getmtime(self.testimage_path)
-        atime = os.path.getatime(self.testimage_path)
-        os.utime(self.testimage_path, (mtime + 1, atime + 1))
+        with open(foo_path, 'w') as f:
+            f.write('foo');
 
-        call_command('collectstatic', interactive=False, verbosity=0, stderr=err)
-        relpath = self.hashed_file_path('cached/css/window.css')
-        with storage.staticfiles_storage.open(relpath) as relfile:
-            self.assertIn(b'window.a836fe39729e.png', relfile.read())
+        with open(bar_path, 'w') as f:
+            f.write('url("foo.png")\nurl("xyz.png")')
+
+        with open(xyz_path, 'w') as f:
+            f.write('xyz');
+
+        with self.modify_settings(STATICFILES_DIRS={'append': self._temp_dir}):
+            finders.get_finder.cache_clear()
+            err = six.StringIO()
+            call_command('collectstatic', interactive=False, verbosity=0, stderr=err)
+
+            relpath = self.hashed_file_path('test/bar.css')
+            with storage.staticfiles_storage.open(relpath) as relfile:
+                content = relfile.read()
+                self.assertIn(b'foo.acbd18db4cc2.png', content)
+                self.assertIn(b'xyz.d16fb36f0911.png', content)
+
+            for file_path in [foo_path, xyz_path]:
+                with open(file_path, 'w+b') as f:
+                    f.write(b"new content of png file to change it's hash")
+
+            call_command('collectstatic', interactive=False, verbosity=0, stderr=err)
+            relpath = self.hashed_file_path('test/bar.css')
+            with storage.staticfiles_storage.open(relpath) as relfile:
+                content = relfile.read()
+                self.assertIn(b'foo.a836fe39729e.png', content)
+                self.assertIn(b'xyz.a836fe39729e.png', content)
