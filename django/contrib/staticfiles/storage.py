@@ -206,6 +206,13 @@ class HashedFilesMixin(object):
             """
             matched, url = matchobj.groups()
 
+            absolute_url = False
+
+            # Allow absolute URLs if they match STATIC_URL
+            if url.startswith(settings.STATIC_URL):
+                url = url[len(settings.STATIC_URL):]
+                absolute_url = True
+
             # Ignore absolute/protocol-relative, fragments and data-uri URLs.
             if url.startswith(('http:', 'https:', '//', '#', 'data:')):
                 return matched
@@ -218,7 +225,9 @@ class HashedFilesMixin(object):
             # Strip off the fragment so a path-like fragment won't interfere.
             url_path, fragment = urldefrag(url)
 
-            if url_path.startswith('/'):
+            if absolute_url:
+                target_name = url_path
+            elif url_path.startswith('/'):
                 # Otherwise the condition above would have returned prematurely.
                 assert url_path.startswith(settings.STATIC_URL)
                 target_name = url_path[len(settings.STATIC_URL):]
