@@ -338,7 +338,7 @@ class HashedFilesMixin(object):
             return
 
         # where to store the new paths
-        hashed_files = OrderedDict()
+        hashed_files = OrderedDict(self.hashed_files)
 
         # build a list of adjustable files
         adjustable_paths = [
@@ -371,7 +371,9 @@ class HashedFilesMixin(object):
         self.hashed_files.update(hashed_files)
 
     def clean_name(self, name):
-        return name.replace('\\', '/')
+        name = name.replace('\\', '/')
+        parsed_name = urlsplit(unquote(name))
+        return parsed_name.path.strip()
 
     def hash_key(self, name):
         return name
@@ -380,8 +382,15 @@ class HashedFilesMixin(object):
         # Normalize the path so that we avoid multiple names for the same file like
         # ../foo/bar.css or ../foo/../foo/bar.css which normalize to the same path
         name = posixpath.normpath(name)
-        hash_key = self.hash_key(name)
+        cleaned_name = self.clean_name(name)
+        hash_key = self.hash_key(cleaned_name)
         cache_name = hashed_files.get(hash_key)
+        if cache_name is None:
+            for _cache_name in hashed_files.values():
+                # If the hash key exists as a value in hashed_files then it is the
+                # final name already, so use it instead of re-hashing a hashed file
+                if _cache_name == hash_key:
+                    return hash_key
         if cache_name is None:
             cache_name = self.clean_name(self.hashed_name(name))
         return cache_name
