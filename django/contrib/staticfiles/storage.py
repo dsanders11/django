@@ -241,6 +241,10 @@ class HashedFilesMixin(object):
 
             transformed_url = '/'.join(url_path.split('/')[:-1] + hashed_url.split('/')[-1:])
 
+            # For absolute URLs prepend back the STATIC_URL now that the hashed filename is known
+            if absolute_url:
+                transformed_url = settings.STATIC_URL + transformed_url
+
             # Restore the fragment that was stripped off earlier.
             if fragment:
                 transformed_url += ('?#' if '?#' in url else '#') + fragment
