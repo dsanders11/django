@@ -62,7 +62,7 @@ class AdjustablePathPattern(tuple):
     def __init__(self, *args, **kwargs):
         self.subpattern = kwargs.pop('subpattern', None)
 
-        super(AdjustablePathPattern, self).__init__(*args, **kwargs)
+        super(AdjustablePathPattern, self).__init__()
 
 
 class HashedFilesMixin(object):
