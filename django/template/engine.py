@@ -52,9 +52,8 @@ class Engine(object):
     @lru_cache.lru_cache()
     def get_default():
         """
-        When only one DjangoTemplates backend is configured, returns it.
-
-        Raises ImproperlyConfigured otherwise.
+        Return the first DjangoTemplates backend that's configured, or raise
+        ImproperlyConfigured if none are configured.
 
         This is required for preserving historical APIs that rely on a
         globally available, implicitly configured engine such as:
@@ -70,18 +69,10 @@ class Engine(object):
         # local imports are required to avoid import loops.
         from django.template import engines
         from django.template.backends.django import DjangoTemplates
-        django_engines = [engine for engine in engines.all()
-                          if isinstance(engine, DjangoTemplates)]
-        if len(django_engines) == 1:
-            # Unwrap the Engine instance inside DjangoTemplates
-            return django_engines[0].engine
-        elif len(django_engines) == 0:
-            raise ImproperlyConfigured(
-                "No DjangoTemplates backend is configured.")
-        else:
-            raise ImproperlyConfigured(
-                "Several DjangoTemplates backends are configured. "
-                "You must select one explicitly.")
+        for engine in engines.all():
+            if isinstance(engine, DjangoTemplates):
+                return engine.engine
+        raise ImproperlyConfigured('No DjangoTemplates backend is configured.')
 
     @cached_property
     def template_context_processors(self):
