@@ -142,6 +142,20 @@ class AdminField(object):
         return mark_safe(self.field.errors.as_ul())
 
 
+def get_field_label_and_help_text(form, field_name, model_admin):
+    if form._meta.labels and field_name in form._meta.labels:
+        label = form._meta.labels[field_name]
+    else:
+        label = label_for_field(field_name, form._meta.model, model_admin)
+
+    if form._meta.help_texts and field_name in form._meta.help_texts:
+        help_text = form._meta.help_texts[field_name]
+    else:
+        help_text = help_text_for_field(field_name, form._meta.model)
+
+    return (label, help_text)
+
+
 class AdminReadonlyField(object):
     def __init__(self, form, field, is_first, model_admin=None):
         # Make self.field look a little bit like a field. This means that
@@ -152,15 +166,7 @@ class AdminReadonlyField(object):
         else:
             class_name = field
 
-        if form._meta.labels and class_name in form._meta.labels:
-            label = form._meta.labels[class_name]
-        else:
-            label = label_for_field(field, form._meta.model, model_admin)
-
-        if form._meta.help_texts and class_name in form._meta.help_texts:
-            help_text = form._meta.help_texts[class_name]
-        else:
-            help_text = help_text_for_field(class_name, form._meta.model)
+        label, help_text = get_field_label_and_help_text(form, class_name, model_admin)
 
         self.field = {
             'name': class_name,
@@ -247,17 +253,21 @@ class InlineAdminFormSet(object):
         for i, field_name in enumerate(flatten_fieldsets(self.fieldsets)):
             if fk and fk.name == field_name:
                 continue
+            form = self.formset.empty_form
+            label, help_text = get_field_label_and_help_text(form, field_name, self.opts)
             if field_name in self.readonly_fields:
-                yield {
-                    'label': label_for_field(field_name, self.opts.model, self.opts),
-                    'widget': {
-                        'is_hidden': False
-                    },
-                    'required': False,
-                    'help_text': help_text_for_field(field_name, self.opts.model),
-                }
+                widget = {'is_hidden': False}
+                required = False
             else:
-                yield self.formset.form.base_fields[field_name]
+                form_field = form.fields[field_name]
+                widget = form_field.widget
+                required = form_field.required
+            yield {
+                'label': label,
+                'widget': widget,
+                'required': required,
+                'help_text': help_text,
+            }
 
     def _media(self):
         media = self.opts.media + self.formset.media
