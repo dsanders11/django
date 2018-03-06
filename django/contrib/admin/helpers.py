@@ -254,12 +254,16 @@ class InlineAdminFormSet(object):
             if fk and fk.name == field_name:
                 continue
             form = self.formset.empty_form
-            label, help_text = get_field_label_and_help_text(form, field_name, self.opts)
             if field_name in self.readonly_fields:
+                label, help_text = get_field_label_and_help_text(form, field_name, self.opts)
                 widget = {'is_hidden': False}
                 required = False
             else:
                 form_field = form.fields[field_name]
+                label = form_field.label
+                if label is None:
+                    label = label_for_field(field_name, self.opts.model, self.opts)
+                help_text = form_field.help_text
                 widget = form_field.widget
                 required = form_field.required
             yield {
