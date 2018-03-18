@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
 
+from six import string_types
+
 from itertools import chain
 
 from django.contrib.admin.utils import (
@@ -704,10 +706,10 @@ class ModelAdminChecks(BaseModelAdminChecks):
                 return []
         elif isinstance(item, (tuple, list)):
             # item is option #2
-            field, list_filter_class = item
-            if not issubclass(list_filter_class, FieldListFilter):
-                return must_inherit_from(parent='FieldListFilter', option='%s[1]' % label,
-                                         obj=cls, id='admin.E115')
+            field, second_param = item
+            if not isinstance(second_param, string_types) and not issubclass(second_param, FieldListFilter):
+                return must_be('a string or subclass of FieldListFilter', option='%s[1]' % label,
+                               obj=cls, id='admin.E117')
             else:
                 return []
         else:
