@@ -118,9 +118,17 @@ class ChangeList(object):
                         self.model, self.model_admin)
                 else:
                     field_path = None
+                    title = None
                     if isinstance(list_filter, (tuple, list)):
-                        # This is a custom FieldListFilter class for a given field.
-                        field, field_list_filter_class = list_filter
+                        field, second_param = list_filter
+
+                        if isinstance(second_param, six.string_types):
+                            # Second parameter is an override for the default title
+                            field_list_filter_class = FieldListFilter.create
+                            title = second_param
+                        else:
+                            # This is a custom FieldListFilter class for a given field.
+                            field_list_filter_class = second_param
                     else:
                         # This is simply a field name, so use the default
                         # FieldListFilter class that has been registered for
@@ -130,7 +138,8 @@ class ChangeList(object):
                         field_path = field
                         field = get_fields_from_path(self.model, field_path)[-1]
                     spec = field_list_filter_class(field, request, lookup_params,
-                        self.model, self.model_admin, field_path=field_path)
+                        self.model, self.model_admin, field_path=field_path,
+                        title=title)
                     # Check if we need to use distinct()
                     use_distinct = (use_distinct or
                                     lookup_needs_distinct(self.lookup_opts,
